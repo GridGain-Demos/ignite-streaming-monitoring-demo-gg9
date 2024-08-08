@@ -21,29 +21,40 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.concurrent.TimeUnit;
 
 public class StreamingApplication {
     /* Application default execution time. */
+    private static int DEFAULT_EXEC_COUNT = 0;
     private static int DEFAULT_EXEC_TIME_MINS = 15;
+    private static final String EXEC_COUNT = "execCount";
+    private static final String EXEC_TIME = "execTime";
 
     /* Market ticker. */
     private static MarketTicker ticker;
 
     public static void main(String args[]) {
         int execTime = DEFAULT_EXEC_TIME_MINS;
+        int execCount = DEFAULT_EXEC_COUNT;
 
         if (args != null) {
             for (String arg : args) {
-                if (arg.startsWith("execTime")) {
+                if (arg.startsWith(EXEC_TIME)) {
                     execTime = Integer.parseInt(arg.split("=")[1]);
+                } else if (arg.startsWith(EXEC_COUNT)) {
+                    execCount = Integer.parseInt(arg.split("=")[1]);
                 } else {
-                    System.err.println("Unsupported parameter: " + execTime);
+                    System.err.println("Unsupported parameter: " + arg);
                     return;
                 }
             }
         }
 
-        System.out.println("Application execution time: " + execTime + " minutes");
+        if (DEFAULT_EXEC_COUNT < execCount) {
+            System.out.println("Application execution count: " + execCount);
+        } else {
+            System.out.println("Application execution time: " + execTime + " minutes");
+        }
 
         try (Connection conn = DriverManager.getConnection("jdbc:ignite:thin://127.0.0.1:10800")) {
             createSchema(conn);
@@ -52,19 +63,32 @@ public class StreamingApplication {
             ticker = new MarketTicker();
             ticker.start();
 
-            // Shutting down the application in 'execTime' minutes.
-            new Timer().schedule(new TimerTask() {
-                @Override public void run() {
-                    System.out.println("The execution time is over. Shutting down the application...");
-                    ticker.stop();
-                    System.exit(0);
+            if(DEFAULT_EXEC_COUNT < execCount) {
+                while(ticker.getTradeCount() < execCount) {
+                    System.out.println("Current trade count = " + ticker.getTradeCount());
+                    try {
+                        TimeUnit.SECONDS.sleep(30);
+                    } catch (InterruptedException ie) {
+                        System.out.println("Caught InterruptedException!");
+                    }
                 }
-            }, execTime * 60 * 1000);
+                ticker.stop();
+                System.exit(0);
+            } else {
+                // Shutting down the application in 'execTime' minutes.
+                new Timer().schedule(new TimerTask() {
+                    @Override
+                    public void run() {
+                        System.out.println("The execution time is over. Shutting down the application...");
+                        ticker.stop();
+                        System.exit(0);
+                    }
+                }, execTime * 60 * 1000);
+            }
         } catch (SQLException e) {
             System.out.println("Error using JDBC Connection");
             e.printStackTrace();
         }
-
     }
 
     private static void createSchema(Connection conn) {

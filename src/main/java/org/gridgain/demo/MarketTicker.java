@@ -38,6 +38,10 @@ public class MarketTicker {
         }
     }
 
+    public long getTradeCount() {
+        return counter.get();
+    }
+
     public void start() {
         PNConfiguration cfg = new PNConfiguration();
         cfg.setSubscribeKey(STREAM_SUBSCRIPION_KEY);
@@ -50,6 +54,13 @@ public class MarketTicker {
 
     public void stop() {
         stream.unsubscribe().execute();
+        stream.destroy();
+        try {
+            conn.close();
+        } catch (SQLException e) {
+            System.out.println("Error closing JDBC Connection in MarketTicker");
+            e.printStackTrace();
+        }
     }
 
     private class StreamCallback extends SubscribeCallback {
